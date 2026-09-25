@@ -1,5 +1,5 @@
 import type { Request, Response, NextFunction } from 'express';
-import { ZodSchema } from 'zod';
+import { ZodSchema, ZodError } from 'zod';
 import { ValidationError } from '../domain/errors';
 
 declare module 'express' {
@@ -11,26 +11,25 @@ declare module 'express' {
 export function validate(schema: ZodSchema) {
   return (req: Request, res: Response, next: NextFunction) => {
     try {
-      const rawData = {
-        ...(req.body || {}),
-        ...(req.params || {}),
-        ...(req.query || {}),
+      const rawData: Record<string, unknown> = {
+        ...(req.body as Record<string, unknown> || {}),
+        ...(req.params as Record<string, unknown> || {}),
+        ...(req.query as Record<string, unknown> || {}),
       };
-      
-      // Парсим и получаем чистые, типизированные данные
+
       const validatedData = schema.parse(rawData);
-      
-      // Сохраняем в безопасное поле
-      req.validated = validatedData;
-      
-      // Для методов изменения данных обновляем body для удобства роутов
-      if (['POST', 'PUT', 'PATCH'].includes(req.method)) {
-        req.body = { ...req.body, ...validatedData };
-      }
-      
+
+      req.validated = validatedData as Record<string, unknown>;
+
       next();
     } catch (error) {
-      if (error instanceof Error) {
+      if (error instanceof ZodError) {
+
+        const message = error.errors
+          .map((e) => `${e.path.join('.')}: ${e.message}`)
+          .join(', ');
+        next(new ValidationError(message));
+      } else if (error instanceof Error) {
         next(new ValidationError(error.message));
       } else {
         next(new ValidationError('Невалидные данные'));

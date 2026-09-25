@@ -1,4 +1,4 @@
-import { Router, Request } from 'express';
+import { Router } from 'express';
 import { asyncHandler } from '../utils/asyncHandler';
 import { createStopListService } from '../services/stopList.service';
 import { stopListRepo } from '../repositories/stopListRepo';
@@ -9,6 +9,7 @@ import {
   categoryFilterSchema,
 } from '../middleware/validation';
 import { validate } from '../middleware/validate';
+import type { CreateStopEntryInput } from '../domain/stopList';
 
 const router = Router();
 
@@ -18,15 +19,18 @@ const stopListService = createStopListService({
   now: () => new Date(),
 });
 
+// POST /api/stop-list
 router.post(
   '/',
   validate(createStopEntrySchema),
   asyncHandler(async (req, res) => {
-    const entry = await stopListService.stopDish(req.body);
+    const input = req.validated as CreateStopEntryInput;
+    const entry = await stopListService.stopDish(input);
     res.status(201).json({ data: entry });
   })
 );
 
+// GET /api/stop-list
 router.get(
   '/',
   validate(categoryFilterSchema),
@@ -37,19 +41,19 @@ router.get(
   })
 );
 
+// GET /api/stop-list/history
 router.get(
   '/history',
   validate(paginationSchema),
   asyncHandler(async (req, res) => {
-    // Берем уже преобразованные в числа значения из validated
     const limit = (req.validated?.limit as number) ?? 20;
     const offset = (req.validated?.offset as number) ?? 0;
-    
     const entries = await stopListService.getHistory(limit, offset);
     res.status(200).json({ data: entries });
   })
 );
 
+// PATCH /api/stop-list/:id/return
 router.patch(
   '/:id/return',
   asyncHandler(async (req, res) => {
