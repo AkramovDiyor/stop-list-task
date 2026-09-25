@@ -45,8 +45,9 @@ export function StopDishForm() {
           setReason('');
           setDurationMinutes('30');
         },
-        onError: (err: any) => {
-          setErrors({ server: err.response?.data?.error?.message || 'Ошибка сервера' });
+        onError: (err: unknown) => {
+          const error = err as { response?: { data?: { error?: { message?: string } } } };
+          setErrors({ server: error?.response?.data?.error?.message || 'Ошибка сервера' });
         }
       }
     );
