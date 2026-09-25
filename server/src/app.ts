@@ -7,7 +7,16 @@ import { errorHandler } from './middleware/errorHandler';
 export function createApp() {
   const app = express();
 
-  app.use(cors());
+    app.use(cors({
+    origin: [
+      'http://localhost:5173',
+      'https://stop-list-task.vercel.app',
+      'https://stop-list-task-v9kl.vercel.app'
+    ],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true,
+  }));
   app.use(express.json());
 
   app.use('/api/dishes', dishesRouter);
