@@ -18,15 +18,13 @@ export function validate(schema: ZodSchema) {
       };
 
       const validatedData = schema.parse(rawData);
-
       req.validated = validatedData as Record<string, unknown>;
-
       next();
     } catch (error) {
       if (error instanceof ZodError) {
-
-        const message = error.errors
-          .map((e) => `${e.path.join('.')}: ${e.message}`)
+        const zodError = error as any;
+        const message = zodError.issues
+          .map((issue: any) => `${issue.path.join('.')}: ${issue.message}`)
           .join(', ');
         next(new ValidationError(message));
       } else if (error instanceof Error) {

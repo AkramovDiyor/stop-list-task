@@ -24,7 +24,7 @@ router.post(
   '/',
   validate(createStopEntrySchema),
   asyncHandler(async (req, res) => {
-    const input = req.validated as CreateStopEntryInput;
+    const input = req.validated as unknown as CreateStopEntryInput;
     const entry = await stopListService.stopDish(input);
     res.status(201).json({ data: entry });
   })
