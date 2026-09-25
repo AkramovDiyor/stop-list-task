@@ -1,0 +1,14 @@
+
+node_modules/
+
+
+dist/
+build/
+
+
+*.db
+*.db-journal
+prisma/dev.db
+
+
+.env

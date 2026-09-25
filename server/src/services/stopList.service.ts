@@ -1,89 +1,96 @@
-import { PrismaClient } from '@prisma/client';
-import { NotFoundError, ConflictError } from '../domain/errors';
+// server/src/services/stopList.service.ts
+import { ConflictError, NotFoundError } from '../domain/errors';
+import type {
+  CreateStopEntryInput,
+  StopListEntry,
+  StopListEntryView,
+} from '../domain/stopList';
 import { isActive, toView } from '../domain/stopList';
+import type { DishRepo, StopListRepo } from '../repositories/types';
 
-export class StopListService {
-  constructor(
-    private prisma: PrismaClient,
-    private getNow: () => Date = () => new Date()
-  ) {}
+export function createStopListService(deps: {
+  stopList: StopListRepo;
+  dishes: DishRepo;
+  now: () => Date;
+}) {
+  return {
+    async stopDish(input: CreateStopEntryInput): Promise<StopListEntry> {
+      const dish = await deps.dishes.findById(input.dishId);
+      if (!dish) {
+        throw new NotFoundError(`Блюдо ${input.dishId} не найдено`);
+      }
 
-  async stopDish(input: { dishId: string; reason: string; durationMinutes: number }) {
-    const dish = await this.prisma.dish.findUnique({ where: { id: input.dishId } });
-    if (!dish) throw new NotFoundError('Блюдо не найдено в справочнике');
+      const now = deps.now();
+      const existing = await deps.stopList.findByDishId(input.dishId);
+      if (existing.some((entry) => isActive(entry, now))) {
+        throw new ConflictError('Блюдо уже в стоп-листе');
+      }
 
-    const now = this.getNow();
-    const activeEntries = await this.prisma.stopListEntry.findMany({
-      where: { dishId: input.dishId, returnedAt: null, expiresAt: { gt: now } }
-    });
-
-    if (activeEntries.length > 0) {
-      throw new ConflictError('Это блюдо уже находится в стоп-листе');
-    }
-
-    const expiresAt = new Date(now.getTime() + input.durationMinutes * 60_000);
-
-    return this.prisma.stopListEntry.create({
-      data: {
-        dishId: input.dishId,
+      return deps.stopList.create({
+        dishId: dish.id,
         reason: input.reason.trim(),
         stoppedAt: now.toISOString(),
-        expiresAt: expiresAt.toISOString(),
-      },
-      include: { dish: true }
-    });
-  }
+        expiresAt: new Date(
+          now.getTime() + input.durationMinutes * 60_000
+        ).toISOString(),
+        returnedAt: null,
+      });
+    },
 
-  async getActive(category?: string) {
-    const now = this.getNow();
-    const where: any = { returnedAt: null, expiresAt: { gt: now } };
-    if (category && category !== 'Все') where.dish = { category };
+    async listActive(category?: string): Promise<StopListEntryView[]> {
+      const now = deps.now();
+      const entries = await deps.stopList.findAll();
+      const activeEntries = entries.filter((e) => isActive(e, now));
 
-    const entries = await this.prisma.stopListEntry.findMany({ 
-      where, 
-      include: { dish: true },
-      orderBy: { stoppedAt: 'desc' }
-    });
-    return entries.map(e => toView(e, now));
-  }
+      const views: StopListEntryView[] = [];
+      for (const entry of activeEntries) {
+        const dish = await deps.dishes.findById(entry.dishId);
+        if (!dish) continue;
 
-  async returnDish(id: string) {
-    const entry = await this.prisma.stopListEntry.findUnique({ where: { id }, include: { dish: true } });
-    if (!entry) throw new NotFoundError('Запись стоп-листа не найдена');
-    
-    if (!isActive(entry, this.getNow())) {
-      throw new ConflictError('Запись уже неактивна (истекла или возвращена ранее)');
-    }
+        if (category && dish.category !== category) continue;
 
-    return this.prisma.stopListEntry.update({
-      where: { id },
-      data: { returnedAt: this.getNow().toISOString() },
-      include: { dish: true }
-    });
-  }
+        views.push(toView(entry, dish, now));
+      }
 
-  async getHistory(limit: number, offset: number) {
-    const now = this.getNow();
-    const where = {
-      OR: [{ returnedAt: { not: null } }, { expiresAt: { lte: now } }]
-    };
+      return views;
+    },
 
-    const [items, total] = await Promise.all([
-      this.prisma.stopListEntry.findMany({
-        where,
-        include: { dish: true },
-        orderBy: { stoppedAt: 'desc' },
-        skip: offset,
-        take: limit
-      }),
-      this.prisma.stopListEntry.count({ where })
-    ]);
+    async returnDish(id: string): Promise<StopListEntry> {
+      const entry = await deps.stopList.findById(id);
+      if (!entry) {
+        throw new NotFoundError(`Запись ${id} не найдена`);
+      }
 
-    return {
-      items: items.map(e => toView(e, now)),
-      total,
-      limit,
-      offset
-    };
-  }
+      const now = deps.now();
+      if (!isActive(entry, now)) {
+        throw new ConflictError('Запись уже неактивна');
+      }
+
+      return deps.stopList.update(id, {
+        returnedAt: now.toISOString(),
+      });
+    },
+
+    async getHistory(
+      limit: number,
+      offset: number
+    ): Promise<StopListEntryView[]> {
+      const now = deps.now();
+      const allEntries = await deps.stopList.findAll();
+
+      const historyEntries = allEntries
+        .filter((e) => !isActive(e, now))
+        .sort((a, b) => new Date(b.stoppedAt).getTime() - new Date(a.stoppedAt).getTime())
+        .slice(offset, offset + limit);
+
+      const views: StopListEntryView[] = [];
+      for (const entry of historyEntries) {
+        const dish = await deps.dishes.findById(entry.dishId);
+        if (!dish) continue;
+        views.push(toView(entry, dish, now));
+      }
+
+      return views;
+    },
+  };
 }

@@ -1,4 +1,3 @@
-// server/src/domain/stopList.ts
 export type DishCategory = 'Кухня' | 'Бар' | 'Десерты';
 
 export interface Dish {
@@ -12,8 +11,8 @@ export interface StopListEntry {
   id: string;
   dishId: string;
   reason: string;
-  stoppedAt: string; // ISO 8601
-  expiresAt: string; // ISO 8601
+  stoppedAt: string; 
+  expiresAt: string; 
   returnedAt: string | null;
 }
 
@@ -29,7 +28,6 @@ export interface CreateStopEntryInput {
   durationMinutes: number;
 }
 
-// --- Чистые функции (Business Rules) ---
 
 export function isActive(entry: StopListEntry, now: Date): boolean {
   if (entry.returnedAt !== null) return false;

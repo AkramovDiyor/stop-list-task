@@ -1,4 +1,3 @@
-// server/src/domain/errors.ts
 export class AppError extends Error {
   constructor(
     public statusCode: number,
